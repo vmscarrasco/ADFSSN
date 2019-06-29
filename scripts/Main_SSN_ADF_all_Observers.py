@@ -31,13 +31,13 @@ args, leftovers = parser.parse_known_args()
 # Observer ID range and who to skip
 SSN_ADF_Config.OBS_START_ID = 318
 SSN_ADF_Config.OBS_END_ID = 634
-SSN_ADF_Config.SKIP_OBS = [332, 385, 418, 574, 579, 635]
+SSN_ADF_Config.SKIP_OBS = [574, 579]
 
 # Quantity to use in the numerator of the ADF:  Active days "ADF", 1-quiet days "QDF"
 SSN_ADF_Config.NUM_TYPE = "ADF"
 
 # Quantity to use in the denominator:  Observed days "OBS" or the full month "FULLM", or dynamic ADF "DTh"
-SSN_ADF_Config.DEN_TYPE = "DTh"
+SSN_ADF_Config.DEN_TYPE = "OBS"
 
 # Flag to turn on saving of figures
 plotSwitch = True
@@ -87,7 +87,7 @@ if SSN_ADF_Config.SUPPRESS_NP_WARNINGS:
     np.warnings.filterwarnings('ignore')
 
 # Output Folder
-output_path = 'Run-2019-04-03-SSN3-2'
+output_path = 'Test'
 # output_path = SSN_ADF_Config.get_file_prepend(SSN_ADF_Config.NUM_TYPE, SSN_ADF_Config.DEN_TYPE)
 
 # Output CSV file path
@@ -108,6 +108,7 @@ header = ['Observer',
           'SDThreshold',  # Weighted threshold standard deviation based on the nBest matches for all simultaneous fits
           'AvThresholdS',  # Weighted threshold average based on the nBest matches for different intervals
           'SDThresholdS',  # Weighted threshold standard deviation based on the nBest matches for different intervals
+          'RealThreshold',  # Best threshold identified by minimizing difference between smoothed series
           # Smoothed series metrics
           'mreSth',  # Mean relative error - single threshold
           'mneSth',  # Mean normalized error - single threshold
@@ -171,13 +172,15 @@ ssn_adf = ssnADF(ref_data_path='../input_data/SC_SP_RG_DB_KM_group_areas_by_day.
                        'size': 21},
                  dt=10,  # Temporal Stride in days
                  phTol=2,  # Cycle phase tolerance in years
-                 thN=100,  # Number of thresholds including 0
+                 thS=1,  # Starting threshold
+                 thE=120, # Ending Threshold
                  thI=1,  # Threshold increments
                  thNPc=20,  # Number of thresholds including 0 for percentile fitting
                  thIPc=5,  # Threshold increments for percentile fitting
                  MoLngt=15,  # Duration of the interval ("month") used to calculate the ADF
                  minObD=0.33,  # Minimum proportion of days with observation for a "month" to be considered valid
                  minADFmnth=5,  # Minimum number of months with ADF greater than 0 and lower than 1 for interval to be considered valid
+                 maxValInt=3,  # Maximum number of valid intervals to be used in calibration
                  plot=plotSwitch)
 
 # Stores SSN metadata set in a SSN_ADF_Class
@@ -204,8 +207,7 @@ def run_obs(CalObsID):
 
     # Processing observer
     obs_valid = ssn_adf.processObserver(ssn_data,  # SSN metadata
-                                        CalObs=CalObsID,  # Observer identifier denoting observer to be processed
-                                        maxInt=6)  # Maximum number of intervals that observer can have without being ignored
+                                        CalObs=CalObsID)  # Observer identifier denoting observer to be processed
 
     # Continue only if observer has valid intervals
     if obs_valid:
@@ -216,7 +218,9 @@ def run_obs(CalObsID):
 
         # Calculating the Earth's Mover Distance using sliding windows for different intervals
         obs_ref_overlap = ssn_adf.ADFscanningWindowEMD(ssn_data,
-                                                       Dis_Pow=2)  # Power index used to define the distance matrix for EMD calculation
+                                                       noOvrlpSw=True,  # Switch that forces the code to ignore the true overlapping phase in calibration if present
+                                                       fulActSw=False, # Switch that sets whether ADF = 1 are included in the distribution calculations or not
+                                                       Dis_Pow=1)       # Power index used to define the distance matrix for EMD calculation
 
         if plotSwitch:
             # Plot active vs. observed days
@@ -246,13 +250,9 @@ def run_obs(CalObsID):
         # Calculating the Earth's Mover Distance using common thresholds for different intervals
         if np.sum(ssn_data.vldIntr) > 1:
             plot_EMD_obs = ssn_adf.ADFsimultaneousEMD(ssn_data,
-                                                      NTshifts=20,
+                                                      NTshifts=10,
                                                       # Number of best distances to use per interval
-                                                      maxInterv=4,
-                                                      # Maximum number of separate intervals after which we force the root calculation
-                                                      addNTshifts=0,
-                                                      # Additional number of distances to use per each number of intervals below maxInterv
-                                                      maxIter=20000)
+                                                      maxIter=5000)
                                                       # Maximum number of iterations accepted
 
         # Calculate smoothed series for comparison
@@ -293,10 +293,10 @@ def run_obs(CalObsID):
         y_row = [ssn_data.CalObs,
                  ssn_data.NamObs,
                  ssn_data.wAv,  # Weighted threshold average based on the nBest matches for all simultaneous fits
-                 ssn_data.wSD,
-                 # Weighted threshold standard deviation based on the nBest matches for all simultaneous fits
+                 ssn_data.wSD,  # Weighted threshold standard deviation based on the nBest matches for all simultaneous fits
                  ssn_data.wAvI,  # Weighted threshold average based on the nBest matches for different intervals
-                 ssn_data.wSDI,
+                 ssn_data.wSDI,  # Weighted threshold standard deviation based on the nBest matches for different intervals
+                 ssn_data.realThr,  # Best threshold identified by minimizing difference between smoothed series
                  # Smoothed series metrics
                  ssn_data.mreSth,  # Mean relative error - single threshold
                  ssn_data.mneSth,  # Mean normalized error - single threshold
